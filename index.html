@@ -317,11 +317,47 @@ textarea.memo::placeholder{color:var(--text3);}
 </div>
 <div id="toast"></div>
 
+
+
+
 <script>
-const KEY='jlpt_v3';
-let state={logs:{},grammarPage:0,grammarChap:0};
-function save(){localStorage.setItem(KEY,JSON.stringify(state));}
-function load(){const d=localStorage.getItem(KEY);if(d)state=JSON.parse(d);}
+// 1. 설정: 구글 웹 앱 URL을 여기에 넣어줘!
+const API_URL = "https://script.google.com/macros/s/AKfycbxRuvkWbhbqKajsUk9bI9_diPG2A4K5ulbSo5B16XRSXlWJdlqWPNwfuqfh7ZJa01Brkw/exec"; 
+const KEY = 'jlpt_v3';
+let state = {logs:{}, grammarPage:0, grammarChap:0};
+
+// 2. 데이터 저장 (클라우드 + 로컬 백업)
+async function save() {
+  const dataStr = JSON.stringify(state);
+  localStorage.setItem(KEY, dataStr); 
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      body: dataStr
+    });
+  } catch (e) {
+    console.error("Cloud save failed", e);
+    showToast("클라우드 저장 실패. 로컬에 저장됨");
+  }
+}
+
+// 3. 데이터 불러오기 (동기화)
+async function load() {
+  try {
+    showToast("데이터 동기화 중...");
+    const res = await fetch(API_URL);
+    const text = await res.text();
+    if (text && text !== "undefined") {
+      state = JSON.parse(text);
+      render();
+    }
+  } catch (e) {
+    console.log("로컬 데이터 로드");
+    const d = localStorage.getItem(KEY);
+    if (d) state = JSON.parse(d);
+    render();
+  }
+}
 
 function todayStr(){const d=new Date();return fmt(d);}
 function fmt(d){return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());}
@@ -339,8 +375,9 @@ function saveProgress(){
   const p=Math.min(579,Math.max(0,parseInt(document.getElementById('pageInp').value)||0));
   const c=Math.min(56,Math.max(0,parseInt(document.getElementById('chapInp').value)||0));
   state.grammarPage=p;state.grammarChap=c;
-  save();renderProgress();showToast('문법책 진도 저장! 📖');
+  save(); renderProgress(); showToast('문법책 진도 저장! 📖');
 }
+
 function renderProgress(){
   let maxPage=0;
   Object.values(state.logs).forEach(l=>{
@@ -359,7 +396,8 @@ function changeStudyTime(delta){
   inp.value=newVal.toFixed(1);
 }
 
-function saveToday(){
+// 4. 저장 함수를 비동기(async)로 변경
+async function saveToday(){
   const t=todayStr();
   const ac=parseInt(document.getElementById('ankiCards').value)||0;
   const aa=parseInt(document.getElementById('ankiAcc').value)||null;
@@ -367,11 +405,14 @@ function saveToday(){
   const st=parseFloat(document.getElementById('studyTime').value)||0;
   const fp=parseInt(document.getElementById('finalPage').value)||0;
   const starred=checks.anki&&checks.grammar&&checks.writing;
+  
   state.logs[t]={anki:checks.anki,grammar:checks.grammar,writing:checks.writing,memo,ankiCards:ac,ankiAcc:aa,starred,studyTime:st,finalPage:fp};
-  save();
+  
+  await save(); // 클라우드 동기화 완료까지 대기
+  
   document.getElementById('studyTime').value='';
   document.getElementById('finalPage').value='';
-  showToast(starred?'⭐ 완벽한 하루! 별점 획득! 🎌':'✓ 기록 저장 완료! 화이팅 💪');
+  showToast(starred?'⭐ 오늘의 공부 끝':'✓ 기록 저장 완료');
   render();
 }
 
@@ -446,23 +487,20 @@ function renderRecentLog(){
 }
 
 function render(){
-  // dday
   const diff=Math.ceil((new Date('2026-07-05')-new Date())/86400000);
   document.getElementById('ddayNum').textContent=diff>0?diff:'D-DAY!';
   const now=new Date(),days=['일','월','화','수','목','금','토'];
   document.getElementById('todaySub').textContent=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일 '+days[now.getDay()]+'요일';
-  // streak
   const s=calcStreak();
   document.getElementById('streakNum').textContent=s;
   document.getElementById('streakMsg').textContent=s===0?'오늘 첫 기록을 남겨보세요 🌱':s<3?`${s}일 연속! 내일도 이어가요 🔥`:s<7?`${s}일 연속! 이 흐름 유지해요 💪`:`${s}일 연속!! 정말 대단해요 🏆`;
-  // stars
   const sc=Object.values(state.logs).filter(l=>l.starred).length;
   document.getElementById('starTotal').textContent=sc;
   const row=document.getElementById('starsRow');row.innerHTML='';
   const tod=new Date();
   for(let i=6;i>=0;i--){const d=new Date(tod);d.setDate(d.getDate()-i);const k=fmt(d);const lit=state.logs[k]?.starred;const el=document.createElement('span');el.className='star'+(lit?' lit':'');el.textContent='⭐';el.title=k;row.appendChild(el);}
-  // others
-  renderProgress();renderCal();renderAnki();renderStudyTime();renderRecentLog();renderWeeklyChart();
+  
+  renderProgress(); renderCal(); renderAnki(); renderStudyTime(); renderRecentLog(); renderWeeklyChart();
 }
 
 function showToast(msg){
@@ -473,8 +511,6 @@ function renderWeeklyChart(){
   const container = document.getElementById('weeklyChart'); container.innerHTML='';
   const today = new Date();
   const days = ['일','월','화','수','목','금','토'];
-  
-  // 이번주 시작(일요일)부터 표시
   const weekStart = new Date(today);
   weekStart.setDate(today.getDate() - today.getDay());
   
@@ -482,7 +518,7 @@ function renderWeeklyChart(){
     const d = new Date(weekStart); d.setDate(weekStart.getDate()+i);
     const k = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     const hours = state.logs[k]?.studyTime || 0;
-    const hPct = Math.min(100, (hours/8)*100); // 8시간 기준 100%
+    const hPct = Math.min(100, (hours/8)*100); 
     const isToday = d.toDateString() === today.toDateString();
     
     const barWrap = document.createElement('div'); barWrap.className='chart-bar-wrap';
@@ -495,15 +531,13 @@ function renderWeeklyChart(){
   }
 }
 
-const quotes=[
-  {jp:'努力は時に裏切ることがありますね',ko:'노력은 가끔 배신하지요'},
-];
+const quotes=[{jp:'努力は時に裏切ることがありますね',ko:'노력은 가끔 배신하지요'}];
 const q=quotes[new Date().getDay()%quotes.length];
 document.getElementById('quoteJp').textContent=q.jp;
-document.getElementById('quoteKo').textContent=q.ko+' — 니애미 ';
+document.getElementById('quoteKo').textContent=q.ko+' — 오늘도 화이팅! ';
 
-renderWeeklyChart();
-load();initCal();render();
+// 시작 시 데이터 로드
+load(); initCal();
 </script>
 </body>
 </html>
