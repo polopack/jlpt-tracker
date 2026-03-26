@@ -481,7 +481,11 @@ function renderRecentLog(){
 }
 
 function render(){
-  const diff=Math.ceil((new Date('2026-07-05')-new Date())/86400000);
+  const examDate = new Date(2026, 6, 5); // 월은 0부터 시작 (6 = 7월)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  examDate.setHours(0, 0, 0, 0);
+  const diff = Math.ceil((examDate - today) / 86400000);
   document.getElementById('ddayNum').textContent=diff>0?diff:'D-DAY!';
   const now=new Date(),days=['일','월','화','수','목','금','토'];
   document.getElementById('todaySub').textContent=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일 '+days[now.getDay()]+'요일';
